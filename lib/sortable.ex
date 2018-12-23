@@ -60,7 +60,22 @@ defmodule Sortable do
   end
 
   defp encoding(b, zero) when is_binary(b) do
-    [2, :binary.replace(b, zero, <<0, 255>>, [:global]), 0]
+    case :binary.split(b, zero, [:global]) do
+      [bin] ->
+        [2, bin, 0]
+
+      [bin_1, bin_2] ->
+        [2, bin_1, <<0, 255>>, bin_2, 0]
+
+      [bin_1, bin_2, bin_3] ->
+        [2, bin_1, <<0, 255>>, bin_2, <<0, 255>>, bin_3, 0]
+
+      [bin_1, bin_2, bin_3, bin_4] ->
+        [2, bin_1, <<0, 255>>, bin_2, <<0, 255>>, bin_3, <<0, 255>>, bin_4, 0]
+
+      bins ->
+        [2, Enum.intersperse(bins, <<0, 255>>), 0]
+    end
   end
 
   defp encoding(:max_binary, _zero) do
