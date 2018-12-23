@@ -176,18 +176,18 @@ defmodule Sortable do
   end
 
   # negative integer
-  defp decoding(<<code, data::bits>>, acc, zero) when code in 12..131 do
-    bin_size = 132 - code
-    <<bin::bytes-size(bin_size), rest::bits>> = data
-    int = -:binary.decode_unsigned(complement(bin))
-    decoding(rest, [int | acc], zero)
+  for code <- 12..131, size = (132 - code) * 8 do
+    defp decoding(<<unquote(code), b::bits-size(unquote(size)), rest::bits>>, acc, zero) do
+      <<int::unquote(size)>> = complement(b)
+      decoding(rest, [-int | acc], zero)
+    end
   end
 
   # non-negative integer
-  defp decoding(<<code, data::bits>>, acc, zero) when code in 132..251 do
-    int_size = code - 131
-    <<int::integer-size(int_size)-unit(8), rest::bits>> = data
-    decoding(rest, [int | acc], zero)
+  for code <- 132..251, size = (code - 131) * 8 do
+    defp decoding(<<unquote(code), int::unquote(size), rest::bits>>, acc, zero) do
+      decoding(rest, [int | acc], zero)
+    end
   end
 
   defp decoding(<<253, rest::bits>>, acc, zero) do
