@@ -49,4 +49,4 @@ Benchee.run(%{
       :erlang.binary_to_term(erlang_data)
     end
   end
-})
+}, memory_time: 2)
