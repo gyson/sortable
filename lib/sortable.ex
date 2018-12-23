@@ -3,22 +3,35 @@ defmodule Sortable do
   Documentation for Sortable.
   """
 
-  # code:
-  # 0 to 126 is negative
-  # 127 to 253 is non-negative
-  # 254 is binary
+  use Bitwise
 
-  @spec encode([binary | integer]) :: binary
+  # order:
+  # :min_binary(1) < binary(2) < :max_binary(3) < :min_float(5) < float-neg(6) < float-non-neg(7) < :max_float(8) < :min_integer(10) < integer(12~251) < :max_integer(253)
+  # 0, 4, 9, 11, 252, 254 are reserved for future extension
+
+  @type items() :: [
+          :min_binary
+          | binary()
+          | :max_binary
+          | :min_float
+          | float()
+          | :max_float
+          | :min_integer
+          | integer()
+          | :max_integer
+        ]
+
+  @spec encode(items()) :: binary()
   def encode(list) when is_list(list) do
     do_encode(list, <<0>>)
   end
 
-  @spec decode(binary()) :: [binary | integer]
+  @spec decode(binary()) :: items()
   def decode(data) when is_binary(data) do
     do_decode(data, <<0>>)
   end
 
-  @spec compile() :: {([binary | integer] -> binary), (binary -> [binary | integer])}
+  @spec compile() :: {(items() -> binary()), (binary() -> items())}
   def compile() do
     compiled_zero = :binary.compile_pattern(<<0>>)
 
@@ -37,126 +50,178 @@ defmodule Sortable do
 
   defp do_encode([first | rest], zero) do
     Enum.reduce(rest, encoding(first, zero), fn item, acc ->
-      [acc, 0 | encoding(item, zero)]
+      [acc | encoding(item, zero)]
     end)
     |> IO.iodata_to_binary()
   end
 
+  defp encoding(:min_binary, _zero) do
+    [1]
+  end
+
   defp encoding(b, zero) when is_binary(b) do
-    [254, :binary.replace(b, zero, <<0, 255>>, [:global])]
+    [2, :binary.replace(b, zero, <<0, 255>>, [:global]), 0]
+  end
+
+  defp encoding(:max_binary, _zero) do
+    [3]
+  end
+
+  defp encoding(:min_float, _zero) do
+    [5]
+  end
+
+  defp encoding(f, _zero) when is_float(f) do
+    if f < 0 do
+      <<i::64>> = <<f::float>>
+      [6, <<i ^^^ 0xFFFFFFFFFFFFFFFF::64>>]
+    else
+      [7, <<f::float>>]
+    end
+  end
+
+  defp encoding(:max_float, _zero) do
+    [8]
+  end
+
+  defp encoding(:min_integer, _zero) do
+    [10]
   end
 
   defp encoding(i, _zero) when is_integer(i) do
-    if i >= 0 do
-      encoded = :binary.encode_unsigned(i)
-      code = byte_size(encoded) + 126
+    if i < 0 do
+      encoded = complement(:binary.encode_unsigned(-i))
+      code = 132 - byte_size(encoded)
 
-      if code > 253 do
-        raise ArgumentError, message: "int too big"
+      if code < 12 do
+        raise ArgumentError, message: "integer too small"
       end
 
       [code, encoded]
     else
-      encoded = complement(:binary.encode_unsigned(-i))
-      code = 127 - byte_size(encoded)
+      encoded = :binary.encode_unsigned(i)
+      code = byte_size(encoded) + 131
 
-      if code < 0 do
-        raise ArgumentError, message: "int too small"
+      if code > 251 do
+        raise ArgumentError, message: "integer too big"
       end
 
       [code, encoded]
     end
+  end
+
+  defp encoding(:max_integer, _zero) do
+    [253]
   end
 
   defp do_decode(<<>>, _), do: []
 
-  defp do_decode(<<code, data::binary>>, zero) do
-    decoding(code, data, [], zero)
+  defp do_decode(data, zero) do
+    decoding(data, [], zero)
     |> Enum.reverse()
   end
 
-  defp concat_bins(bin, []) do
-    bin
+  defp decoding(<<>>, acc, _zero) do
+    acc
   end
 
-  defp concat_bins(bin, acc) do
-    Enum.reverse([bin | acc]) |> IO.iodata_to_binary()
+  defp decoding(<<1, rest::bits>>, acc, zero) do
+    decoding(rest, [:min_binary | acc], zero)
   end
 
-  defp split_binary(data, acc, zero) do
+  defp decoding(<<2, data::bits>>, acc, zero) do
+    decode_bin(data, [], acc, zero)
+  end
+
+  defp decoding(<<3, rest::bits>>, acc, zero) do
+    decoding(rest, [:max_binary | acc], zero)
+  end
+
+  defp decoding(<<5, rest::bits>>, acc, zero) do
+    decoding(rest, [:min_float | acc], zero)
+  end
+
+  # negative float
+  defp decoding(<<6, b::64, rest::bits>>, acc, zero) do
+    <<f::float>> = <<b ^^^ 0xFFFFFFFFFFFFFFFF::64>>
+    decoding(rest, [f | acc], zero)
+  end
+
+  # non-negative float
+  defp decoding(<<7, f::float, rest::bits>>, acc, zero) do
+    decoding(rest, [f | acc], zero)
+  end
+
+  defp decoding(<<8, rest::bits>>, acc, zero) do
+    decoding(rest, [:max_float | acc], zero)
+  end
+
+  defp decoding(<<10, rest::bits>>, acc, zero) do
+    decoding(rest, [:min_integer | acc], zero)
+  end
+
+  # negative integer
+  defp decoding(<<code, data::bits>>, acc, zero) when code in 12..131 do
+    bin_size = 132 - code
+    <<bin::bytes-size(bin_size), rest::bits>> = data
+    int = -:binary.decode_unsigned(complement(bin))
+    decoding(rest, [int | acc], zero)
+  end
+
+  # non-negative integer
+  defp decoding(<<code, data::bits>>, acc, zero) when code in 132..251 do
+    int_size = code - 131
+    <<int::integer-size(int_size)-unit(8), rest::bits>> = data
+    decoding(rest, [int | acc], zero)
+  end
+
+  defp decoding(<<253, rest::bits>>, acc, zero) do
+    decoding(rest, [:max_integer | acc], zero)
+  end
+
+  defp concat_bins([], bin), do: bin
+  defp concat_bins(bin_acc, bin), do: IO.iodata_to_binary([bin_acc, bin])
+
+  defp decode_bin(<<data::bits>>, bin_acc, acc, zero) do
     case :binary.split(data, zero) do
-      [bin] ->
-        {concat_bins(bin, acc), <<>>}
+      [bin, <<>>] ->
+        [concat_bins(bin_acc, bin) | acc]
 
-      [bin, <<255, rest::binary>>] ->
-        split_binary(rest, [0, bin | acc], zero)
+      [bin, <<255, rest::bits>>] ->
+        decode_bin(rest, [bin_acc, bin, 0], acc, zero)
 
-      [bin, rest] ->
-        {concat_bins(bin, acc), rest}
+      [bin, <<rest::bits>>] ->
+        decoding(rest, [concat_bins(bin_acc, bin) | acc], zero)
     end
   end
 
-  defp decoding(254, data, acc, zero) do
-    case split_binary(data, [], zero) do
-      {bin, <<>>} ->
-        [bin | acc]
+  # `decode_bin2` is faster in some cases, especially when binary
+  # contains a lot <<0>>.
+  #
+  # TODO: compare `decode_bin` and `decode_bin2` when
+  # https://github.com/erlang/otp/pull/1803 is released because
+  # `:binary.split` might be highly optimised.
 
-      {bin, <<next_code, next_data::binary>>} ->
-        decoding(next_code, next_data, [bin | acc], zero)
-    end
-  end
+  # defp decode_bin2(<<0, 255, rest::bits>>, bin_acc, acc, zero) do
+  #   decode_bin2(rest, [0 | bin_acc], acc, zero)
+  # end
 
-  # parse negative integer
-  defp decoding(code, data, acc, zero) when code <= 126 do
-    int_size = 127 - code
-    data_size = byte_size(data)
+  # defp decode_bin2(<<0, rest::bits>>, bin_acc, acc, zero) do
+  #   bin = :lists.reverse(bin_acc) |> :erlang.list_to_binary()
+  #   decoding(rest, [bin | acc], zero)
+  # end
 
-    int =
-      binary_part(data, 0, int_size)
-      |> decode_neg()
-
-    if data_size > int_size do
-      next_code = :binary.at(data, int_size + 1)
-      next_data = binary_part(data, int_size + 2, data_size - int_size - 2)
-      decoding(next_code, next_data, [int | acc], zero)
-    else
-      [int | acc]
-    end
-  end
-
-  # parse non_negative integer
-  defp decoding(code, data, acc, zero) when code <= 253 do
-    int_size = code - 126
-    data_size = byte_size(data)
-
-    int = :binary.decode_unsigned(binary_part(data, 0, int_size))
-
-    if data_size > int_size do
-      next_code = :binary.at(data, int_size + 1)
-      next_data = binary_part(data, int_size + 2, data_size - int_size - 2)
-      decoding(next_code, next_data, [int | acc], zero)
-    else
-      [int | acc]
-    end
-  end
-
-  defp decode_neg(<<a>>), do: a - 255
-  defp decode_neg(<<a, b>>), do: (a - 255) * 256 + (b - 255)
-  defp decode_neg(<<a, b, c>>), do: (a - 255) * 65536 + (b - 255) * 256 + (c - 255)
-
-  defp decode_neg(bin) do
-    bin
-    |> complement()
-    |> :binary.decode_unsigned()
-    |> Kernel.-()
-  end
+  # defp decode_bin2(<<char, rest::bits>>, bin_acc, acc, zero) do
+  #   decode_bin2(rest, [char | bin_acc], acc, zero)
+  # end
 
   defp complement(<<>>), do: <<>>
-  defp complement(<<a>>), do: <<255 - a>>
-  defp complement(<<a, b>>), do: <<255 - a, 255 - b>>
-  defp complement(<<a, b, c>>), do: <<255 - a, 255 - b, 255 - c>>
+  defp complement(<<i::8>>), do: <<i ^^^ 0xFF::8>>
+  defp complement(<<i::16>>), do: <<i ^^^ 0xFFFF::16>>
+  defp complement(<<i::24>>), do: <<i ^^^ 0xFFFFFF::24>>
+  defp complement(<<i::32>>), do: <<i ^^^ 0xFFFFFFFF::32>>
 
-  defp complement(<<n, rest::binary>>) do
-    <<255 - n, complement(rest)::binary>>
+  defp complement(<<i::32, rest::bits>>) do
+    <<i ^^^ 0xFFFFFFFF::32, complement(rest)::bits>>
   end
 end

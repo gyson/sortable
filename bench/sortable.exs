@@ -1,6 +1,6 @@
 n = 1000
 
-data = ["Hello", "world", 2018, 11, 11, "special-uuid-here", 23, -3, -1000]
+data = ["Hello", "world", 2018, 11, 11, "special-uuid-here", -3, -1000, 1.2, -1.3]
 
 {encode, decode} = Sortable.compile()
 
