@@ -19,3 +19,6 @@ Documentation can be generated with [ExDoc](https://github.com/elixir-lang/ex_do
 and published on [HexDocs](https://hexdocs.pm). Once published, the docs can
 be found at [https://hexdocs.pm/sortable](https://hexdocs.pm/sortable).
 
+## Optimization
+
+Run `ERL_COMPILER_OPTIONS=bin_opt_info mix compile` to ensure binary parsing is optimized.

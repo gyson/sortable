@@ -5,6 +5,14 @@ defmodule Sortable do
 
   use Bitwise
 
+  @on_load :prepare
+  @zero_key Sortable.Zero
+
+  def prepare() do
+    :persistent_term.put(@zero_key, :binary.compile_pattern(<<0>>))
+    :ok
+  end
+
   # order:
   # :min_binary(1) < binary(2) < :max_binary(3) < :min_float(5) < float-neg(6) < float-non-neg(7) < :max_float(8) < :min_integer(10) < integer(12~251) < :max_integer(253)
   # 0, 4, 9, 11, 252, 254 are reserved for future extension
@@ -22,37 +30,27 @@ defmodule Sortable do
         ]
 
   @spec encode(items()) :: binary()
-  def encode(list) when is_list(list) do
-    do_encode(list, <<0>>)
+
+  def encode([]) do
+    <<>>
   end
 
-  @spec decode(binary()) :: items()
-  def decode(data) when is_binary(data) do
-    do_decode(data, <<0>>)
-  end
+  def encode([first | rest]) do
+    zero = :persistent_term.get(@zero_key)
 
-  @spec compile() :: {(items() -> binary()), (binary() -> items())}
-  def compile() do
-    compiled_zero = :binary.compile_pattern(<<0>>)
-
-    encode = fn list when is_list(list) ->
-      do_encode(list, compiled_zero)
-    end
-
-    decode = fn data when is_binary(data) ->
-      do_decode(data, compiled_zero)
-    end
-
-    {encode, decode}
-  end
-
-  defp do_encode([], _zero), do: <<>>
-
-  defp do_encode([first | rest], zero) do
     Enum.reduce(rest, encoding(first, zero), fn item, acc ->
       [acc | encoding(item, zero)]
     end)
     |> IO.iodata_to_binary()
+  end
+
+  @spec decode(binary()) :: items()
+
+  def decode(data) when is_binary(data) do
+    zero = :persistent_term.get(@zero_key)
+
+    decoding(data, [], zero)
+    |> Enum.reverse()
   end
 
   defp encoding(:min_binary, _zero) do
@@ -127,13 +125,6 @@ defmodule Sortable do
 
   defp encoding(:max_integer, _zero) do
     [253]
-  end
-
-  defp do_decode(<<>>, _), do: []
-
-  defp do_decode(data, zero) do
-    decoding(data, [], zero)
-    |> Enum.reverse()
   end
 
   defp decoding(<<>>, acc, _zero) do
