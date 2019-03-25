@@ -43,6 +43,18 @@ Design a simple, fast and space-efficiency serialization solution with order res
 :rocksdb.iterator_close(iterator)
 ```
 
+## Ordering
+
+It does not follow erlang term order because it seperates order of integers and floats to eliminate cast trouble from [sext][2].
+
+Generally, order is `binary` < `float` < `integer` (order by name).
+
+For example,
+
+```elixir
+Sortable.encode(["hi"]) < Sortable.encode([0.0]) < Sortable.encode([0])
+```
+
 ## Installation
 
 The package can be installed by adding `sortable` to your list of dependencies in `mix.exs`:
