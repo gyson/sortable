@@ -2,15 +2,15 @@ defmodule SortableTest do
   use ExUnit.Case
   doctest Sortable
 
-  def get_order_code(:min_binary), do: 1
-  def get_order_code(x) when is_binary(x), do: 2
-  def get_order_code(:max_binary), do: 3
-  def get_order_code(:min_float), do: 4
-  def get_order_code(x) when is_float(x), do: 5
-  def get_order_code(:max_float), do: 6
-  def get_order_code(:min_integer), do: 7
-  def get_order_code(x) when is_integer(x), do: 8
-  def get_order_code(:max_integer), do: 9
+  def get_order_code(:min_binary), do: 30
+  def get_order_code(x) when is_binary(x), do: 31
+  def get_order_code(:max_binary), do: 32
+  def get_order_code(:min_float), do: 40
+  def get_order_code(x) when is_float(x), do: 41
+  def get_order_code(:max_float), do: 44
+  def get_order_code(:min_integer), do: 50
+  def get_order_code(x) when is_integer(x), do: 51
+  def get_order_code(:max_integer), do: 229
 
   def generate_random_list() do
     bins =

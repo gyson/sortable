@@ -1,6 +1,8 @@
 defmodule Sortable do
   @moduledoc """
-  Documentation for Sortable.
+
+  Sortable is library to provide serialization with order reserved.
+
   """
 
   use Bitwise
@@ -13,11 +15,17 @@ defmodule Sortable do
     :ok
   end
 
-  # order:
-  # :min_binary(1) < binary(2) < :max_binary(3) < :min_float(5) < float-neg(6) < float-non-neg(7) < :max_float(8) < :min_integer(10) < integer(12~251) < :max_integer(253)
-  # 0, 4, 9, 11, 252, 254 are reserved for future extension
+  # order with code:
+  #
+  # :min_binary(30) < binary(31) < :max_binary(32) <
+  # :min_float(40) < float-neg(41) < 0.0(42) < float-pos(43) < :max_float(44) <
+  # :min_integer(50) < neg_integer(56~75) < integer 0~127 (76~203) < pos_integer(204~223) < :max_integer(229)
+  #
+  # 51~55 reserved for big_neg_int
+  # 224~228 reserved for big_pos_int
+  # 0~29, 33~39, 44~49, 230~254 are reserved for future extension
 
-  @type items() :: [
+  @type t :: [
           :min_binary
           | binary()
           | :max_binary
@@ -29,7 +37,22 @@ defmodule Sortable do
           | :max_integer
         ]
 
-  @spec encode(items()) :: binary()
+  @doc """
+
+  Encode a list of binaries, floats or integers to binary with order reserved.
+
+  ## Example
+
+        iex> x = Sortable.encode(["foo", 99])
+        <<31, 102, 111, 111, 0, 175>>
+        iex> y = Sortable.encode(["foo", 1999])
+        <<31, 102, 111, 111, 0, 205, 7, 207>>
+        iex> x < y
+        true
+
+  """
+
+  @spec encode(t) :: binary()
 
   def encode([]) do
     <<>>
@@ -44,7 +67,20 @@ defmodule Sortable do
     |> IO.iodata_to_binary()
   end
 
-  @spec decode(binary()) :: items()
+  @doc """
+
+  Decode binary with Sortable format to list of binaries, floats or integers.
+
+  ## Example
+
+      iex> encoded = Sortable.encode(["foo", "bar", 123])
+      <<31, 102, 111, 111, 0, 31, 98, 97, 114, 0, 199>>
+      iex> Sortable.decode(encoded)
+      ["foo", "bar", 123]
+
+  """
+
+  @spec decode(binary()) :: t
 
   def decode(data) when is_binary(data) do
     zero = :persistent_term.get(@zero_key)
@@ -54,134 +90,158 @@ defmodule Sortable do
   end
 
   defp encoding(:min_binary, _zero) do
-    [1]
+    [30]
   end
 
   defp encoding(b, zero) when is_binary(b) do
     case :binary.split(b, zero, [:global]) do
       [bin] ->
-        [2, bin, 0]
+        [31, bin, 0]
 
       [bin_1, bin_2] ->
-        [2, bin_1, <<0, 255>>, bin_2, 0]
+        [31, bin_1, <<0, 255>>, bin_2, 0]
 
       [bin_1, bin_2, bin_3] ->
-        [2, bin_1, <<0, 255>>, bin_2, <<0, 255>>, bin_3, 0]
+        [31, bin_1, <<0, 255>>, bin_2, <<0, 255>>, bin_3, 0]
 
       [bin_1, bin_2, bin_3, bin_4] ->
-        [2, bin_1, <<0, 255>>, bin_2, <<0, 255>>, bin_3, <<0, 255>>, bin_4, 0]
+        [31, bin_1, <<0, 255>>, bin_2, <<0, 255>>, bin_3, <<0, 255>>, bin_4, 0]
 
       bins ->
-        [2, Enum.intersperse(bins, <<0, 255>>), 0]
+        [31, Enum.intersperse(bins, <<0, 255>>), 0]
     end
   end
 
   defp encoding(:max_binary, _zero) do
-    [3]
+    [32]
   end
 
   defp encoding(:min_float, _zero) do
-    [5]
+    [40]
   end
 
   defp encoding(f, _zero) when is_float(f) do
-    if f < 0 do
-      <<i::64>> = <<f::float>>
-      [6, <<i ^^^ 0xFFFFFFFFFFFFFFFF::64>>]
-    else
-      [7, <<f::float>>]
+    cond do
+      f < 0.0 ->
+        <<i::64>> = <<f::float>>
+        [41, <<i ^^^ 0xFFFFFFFFFFFFFFFF::64>>]
+
+      f === 0.0 ->
+        [42]
+
+      true ->
+        [43, <<f::float>>]
     end
   end
 
   defp encoding(:max_float, _zero) do
-    [8]
+    [44]
   end
 
   defp encoding(:min_integer, _zero) do
-    [10]
+    [50]
   end
 
   defp encoding(i, _zero) when is_integer(i) do
-    if i < 0 do
-      encoded = complement(:binary.encode_unsigned(-i))
-      code = 132 - byte_size(encoded)
+    cond do
+      i < 0 ->
+        encoded = complement(:binary.encode_unsigned(-i))
+        code = 76 - byte_size(encoded)
 
-      if code < 12 do
-        raise ArgumentError, message: "integer too small"
-      end
+        if code < 56 do
+          # TODO: support neg-intger larger than 20 bytes
+          raise ArgumentError, message: "integer too small"
+        else
+          [code, encoded]
+        end
 
-      [code, encoded]
-    else
-      encoded = :binary.encode_unsigned(i)
-      code = byte_size(encoded) + 131
+      i < 128 ->
+        [i + 76]
 
-      if code > 251 do
-        raise ArgumentError, message: "integer too big"
-      end
+      true ->
+        encoded = :binary.encode_unsigned(i)
+        code = byte_size(encoded) + 203
 
-      [code, encoded]
+        if code > 223 do
+          # TODO: support pos-integer larger than 20 bytes
+          raise ArgumentError, message: "integer too big"
+        else
+          [code, encoded]
+        end
     end
   end
 
   defp encoding(:max_integer, _zero) do
-    [253]
+    [229]
   end
 
   defp decoding(<<>>, acc, _zero) do
     acc
   end
 
-  defp decoding(<<1, rest::bits>>, acc, zero) do
+  defp decoding(<<30, rest::bits>>, acc, zero) do
     decoding(rest, [:min_binary | acc], zero)
   end
 
-  defp decoding(<<2, data::bits>>, acc, zero) do
+  defp decoding(<<31, data::bits>>, acc, zero) do
     decode_bin(data, [], acc, zero)
   end
 
-  defp decoding(<<3, rest::bits>>, acc, zero) do
+  defp decoding(<<32, rest::bits>>, acc, zero) do
     decoding(rest, [:max_binary | acc], zero)
   end
 
-  defp decoding(<<5, rest::bits>>, acc, zero) do
+  defp decoding(<<40, rest::bits>>, acc, zero) do
     decoding(rest, [:min_float | acc], zero)
   end
 
-  # negative float
-  defp decoding(<<6, b::64, rest::bits>>, acc, zero) do
+  # neg float
+  defp decoding(<<41, b::64, rest::bits>>, acc, zero) do
     <<f::float>> = <<b ^^^ 0xFFFFFFFFFFFFFFFF::64>>
     decoding(rest, [f | acc], zero)
   end
 
-  # non-negative float
-  defp decoding(<<7, f::float, rest::bits>>, acc, zero) do
+  # 0.0
+  defp decoding(<<42, rest::bits>>, acc, zero) do
+    decoding(rest, [0.0 | acc], zero)
+  end
+
+  # pos float
+  defp decoding(<<43, f::float, rest::bits>>, acc, zero) do
     decoding(rest, [f | acc], zero)
   end
 
-  defp decoding(<<8, rest::bits>>, acc, zero) do
+  defp decoding(<<44, rest::bits>>, acc, zero) do
     decoding(rest, [:max_float | acc], zero)
   end
 
-  defp decoding(<<10, rest::bits>>, acc, zero) do
+  defp decoding(<<50, rest::bits>>, acc, zero) do
     decoding(rest, [:min_integer | acc], zero)
   end
 
-  # negative integer
-  for code <- 12..131, size = (132 - code) * 8 do
+  # neg integer
+  for code <- 56..75, size = (76 - code) * 8 do
     defp decoding(<<unquote(code), b::bits-size(unquote(size)), rest::bits>>, acc, zero) do
       <<int::unquote(size)>> = complement(b)
       decoding(rest, [-int | acc], zero)
     end
   end
 
-  # non-negative integer
-  for code <- 132..251, size = (code - 131) * 8 do
+  # for 0~127
+  for code <- 76..203, num = code - 76 do
+    defp decoding(<<unquote(code), rest::bits>>, acc, zero) do
+      decoding(rest, [unquote(num) | acc], zero)
+    end
+  end
+
+  # pos integer
+  for code <- 204..228, size = (code - 203) * 8 do
     defp decoding(<<unquote(code), int::unquote(size), rest::bits>>, acc, zero) do
       decoding(rest, [int | acc], zero)
     end
   end
 
-  defp decoding(<<253, rest::bits>>, acc, zero) do
+  defp decoding(<<229, rest::bits>>, acc, zero) do
     decoding(rest, [:max_integer | acc], zero)
   end
 
