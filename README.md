@@ -8,7 +8,7 @@ Inspired by FoundationDB's [tuple layer][1] and [sext library][2].
 
 Design a simple, fast and space-efficiency serialization solution with order reserved for key-value storage use case.
 
-- Simple / Limited Scope: only support list of binaries, floats and integers.
+- Simple / Limited Scope: only support list of binaries, floats and integers (scalar types).
 - Fast: it's 5~10 times faster than alternative [sext library][2] measured by simple benchmarks.
 - Space-efficiency: binary format is designed to be space-dfficiency.
     ```elixir
