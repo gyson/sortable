@@ -1,7 +1,7 @@
 defmodule Sortable do
   @moduledoc """
 
-  Sortable is library to provide serialization with order reserved.
+  Sortable is a library to provide serialization with order reserved.
 
   """
 
@@ -10,6 +10,7 @@ defmodule Sortable do
   @on_load :prepare
   @zero_key Sortable.Zero
 
+  @doc false
   def prepare() do
     :persistent_term.put(@zero_key, :binary.compile_pattern(<<0>>))
     :ok
