@@ -10,7 +10,7 @@ Design a simple, fast and space-efficiency serialization solution with order res
 
 - Simple / Limited Scope: only support list of binaries, floats and integers (scalar types).
 - Fast: it's 5~10 times faster than alternative [sext library][2] measured by simple benchmarks.
-- Space-efficiency: binary format is designed to be space-dfficiency.
+- Space-efficiency: binary format is designed to be space-efficiency.
     ```elixir
     iex(1)> Sortable.encode ["hello", 2019, 4, 1]
     <<31, 104, 101, 108, 108, 111, 0, 205, 7, 227, 80, 77>>
