@@ -10,6 +10,8 @@ defmodule Sortable do
   @on_load :prepare
   @zero_key Sortable.Zero
 
+  @spec prepare() :: :ok
+
   @doc false
   def prepare() do
     :persistent_term.put(@zero_key, :binary.compile_pattern(<<0>>))
@@ -176,6 +178,8 @@ defmodule Sortable do
     [229]
   end
 
+  @spec decoding(binary(), t, any()) :: t
+
   defp decoding(<<>>, acc, _zero) do
     acc
   end
@@ -249,6 +253,8 @@ defmodule Sortable do
   defp concat_bins([], bin), do: bin
   defp concat_bins(bin_acc, bin), do: IO.iodata_to_binary([bin_acc, bin])
 
+  @spec decode_bin(binary(), iodata(), t, any()) :: t
+
   defp decode_bin(<<data::bits>>, bin_acc, acc, zero) do
     case :binary.split(data, zero) do
       [bin, <<>>] ->
@@ -281,6 +287,8 @@ defmodule Sortable do
   # defp decode_bin2(<<char, rest::bits>>, bin_acc, acc, zero) do
   #   decode_bin2(rest, [char | bin_acc], acc, zero)
   # end
+
+  @spec complement(binary()) :: binary()
 
   defp complement(<<>>), do: <<>>
   defp complement(<<i::8>>), do: <<i ^^^ 0xFF::8>>
