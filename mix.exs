@@ -28,6 +28,7 @@ defmodule Sortable.MixProject do
       {:stream_data, "~> 0.4", only: [:test, :dev]},
       {:edown, "~> 0.8", override: true, only: :dev},
       {:ex_doc, "~> 0.19", only: :dev, runtime: false},
+      {:ex_type, "~> 0.3.0", only: :dev, runtime: true},
       {:dialyxir, "~> 1.0.0-rc.4", only: [:dev], runtime: false},
       {:sext,
        git: "https://github.com/uwiger/sext.git", tag: "1.5.0", manager: :rebar, only: :dev}
